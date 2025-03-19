@@ -1,0 +1,9 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+rsconnect/
+
+# Ignore NetCDF files
+*.nc
+Coral_data/*.nc

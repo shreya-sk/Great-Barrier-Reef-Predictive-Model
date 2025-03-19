@@ -1,0 +1,1179 @@
+---
+title: "Predicting Aragonite for Coral Reef Conservation in the GBR"
+author: "Shiyuan Li, James Agamemnonos, Adda Ding, Jasmine Glencross, Kade Jansen-Daniel, Shreya Kothari, Hangrui Shi, Simon Um"
+date: "`r format(Sys.time(), '%d %B, %Y %H:%M')`"
+output:
+  html_document:
+    css: style.css
+    self_contained: true # Creates a single HTML file as output
+    code_folding: hide # Code folding; allows you to show/hide code chunks
+    code_download: true # Includes a menu to download the code file
+    toc: true # (Optional) Creates a table of contents!
+    toc_float: true # table of contents at the side
+    number_sections: true # (Optional) Puts numbers next to heading/subheadings
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# Introduction
+
+Tropical shallow water coral reef ecosystems are highly diverse and
+sensitive ecosystems dependent on complex interactions between organisms
+and their environment. However, the exponential increase in
+anthropogenic carbon dioxide ($CO_2$) emissions has led to adverse
+effects such as ocean acidification (OA) and warming (OW) (Cheng et al.,
+2022; Doney et al., 2009).
+
+Excess $CO_2$ dissolving in seawater leads to production of carbonic
+acid ($H_2CO_3$) and increased hydrogen ions ($H^+$), causing ocean
+acidification. This disrupts the carbonate system and reduces the
+availability of carbonate ions ($CO_3^{2-}$), affecting the saturation
+states of calcium carbonate compounds like aragonite (Doney et al.,
+2009). Aragonite saturation is particularly important for coral reefs as
+it affects their ability to build and maintain calcium carbonate
+skeletons, which form the majority of reef structures. OA and OW have
+been observed to reduce saturation, leading to weakened structures,
+dissolution of shells, and decreased calcification rates, posing a
+threat to coral reef ecosystems (Cornwall et al., 2021).
+
+Higher temperatures increase the solubility of calcium carbonate,
+allowing seawater to hold more dissolved forms, including aragonite.
+However, temperature indirectly affects ($CO_3^{2-}$) concentration.
+Rising temperatures lead to increased acidity in the system, causing a
+decrease in $CO_3^{2-}$ concentration. Conversely, lower temperatures
+shift the system towards more basic conditions, increasing $CO_3^{2-}$
+concentration (Xue et al., 2020).
+
+Our study aims to develop a machine-learning model using data from the
+GRB to understand how aragonite saturation will change with predicted
+warming scenarios. By accurately predicting aragonite levels, we can
+gain insights into reef growth or degradation, aiding conservation
+planning. This study predicts aragonite saturation and assesses the
+reef's ability to grow, crucial due to climate change's impact on coral
+reef growth. Rising CO2 levels and subsequent temperature changes affect
+aragonite saturation. Insufficient aragonite concentration (\<1) impedes
+carbonate structure formation, while higher saturation (\>3) supports
+reef development (NOAA, 2015 & Jiang et al., 2015). Ultimately, our
+interdisciplinary project serves the objective of supporting marine park
+officials in making informed, data-driven decisions for reef
+conservation and efficient resource allocation.
+
+# Method
+
+To accomplish this, we employ three prominent machine learning
+algorithms: k-nearest neighbours (KNN), support vector machines (SVM),
+and linear-regression. To substantiate our choices from a data science
+standpoint, we conduct thorough evaluations of scalability, stability,
+and evaluation metrics such as Root-Mean-Squared-Error (RMSE) and Mean
+Absolute Error (MAE).
+
+Evaluating the stability and scalability of our models is of utmost
+importance in our assessment of their performance and suitability for
+predicting aragonite levels in coral reefs. The combination of
+assessments allows us to select models that not only provide reliable
+estimations of aragonite levels but also demonstrate resilience and
+adaptability to different data scenarios.
+
+Additionally, by comparing the RMSE and MAE across different models, we
+can identify which model yields the smallest prediction errors and
+demonstrates superior performance. These metrics enable us to
+quantitatively assess the models' accuracy and determine their
+suitability for predicting aragonite levels in coral reefs.
+
+## Library Load
+
+```{r setup, warning=FALSE, message = FALSE}
+# Load required libraries
+library(class)
+library(dplyr)
+library(caret)
+library(hydroGOF)
+library(e1071)
+library(sns)
+library(ggplot2)
+library(gridExtra)
+library(ggfortify)
+library(tidyverse)
+library(ncdf4)
+library(shiny)
+library(rbenchmark)
+library(jtools)
+
+```
+
+## NC Functions
+
+```{r}
+read_NC = function(file){
+  data <- nc_open(file)
+
+  lat <- ncvar_get(data, "latitude")
+  lon <- ncvar_get(data, "longitude")
+  
+  ph = ncvar_get(data, "PH") 
+  bleach = ncvar_get(data, "CS_bleach") 
+  carbonate = ncvar_get(data, "CO32") 
+  macroalgae = ncvar_get(data, "MA_N_pr")
+  aragonite = ncvar_get(data, "omega_ar")
+  temp = ncvar_get(data, "temp")
+  salinity = ncvar_get(data, "salt")
+  co2 = ncvar_get(data, "pco2surf")
+  finesed = ncvar_get(data, "FineSed")
+  seagrass = ncvar_get(data, "SG_N_pr")
+  
+  # # get time and convert to standard date 
+  time = ncvar_get(data, "time")
+  timeval = ncatt_get(data,"time", "units")$value
+  ref_time_str<- gsub("days since ", "", timeval)
+  t = as.POSIXct(ref_time_str,format = "%Y-%m-%d")
+  time_standard <- t + time*86400
+  
+  
+  
+  lonlattime <- as.matrix(expand.grid(lon,lat))
+  
+  ph_long <- as.vector(ph)
+  bleach_long = as.vector(bleach)
+  carbonate_long = as.vector(carbonate)
+  macroalgae_long = as.vector(macroalgae)
+  aragonite_long = as.vector(aragonite)
+  temp_long = as.vector(temp)
+  salinity= as.vector(salinity)
+  co2 = as.vector(co2)
+  finesed = as.vector(finesed)
+  seagrass = as.vector(seagrass)
+  
+  data_df <- data.frame(cbind(lonlattime,co2, finesed, seagrass, salinity, ph_long, bleach_long, carbonate_long, macroalgae_long, aragonite_long, temp_long))
+  # 
+  # #drop all NA's
+  data_df = na.omit(data_df)
+  # 
+  # 
+  colnames(data_df) = c("longitude", "latitude","co2","finesed","seagrass","salinity","pH","coral bleach rate","carbonate","macroalgae production","aragonite","temp")
+  data_df$date = time_standard
+  # 
+  return(data_df)
+}
+```
+
+```{r}
+
+read_NC2 = function(file){
+  data <- nc_open(file)
+
+  lat <- ncvar_get(data, "latitude")
+  lon <- ncvar_get(data, "longitude")
+ 
+  
+  # # extract the variables we need 
+  wspeed_u = ncvar_get(data, "wspeed_u") 
+  wspeed_v = ncvar_get(data, "wspeed_v") 
+  mean_wspeed = ncvar_get(data, "mean_wspeed") 
+  mean_current_wspeed = ncvar_get(data, "mean_cur")
+
+  
+  lonlattime <- as.matrix(expand.grid(lon,lat))
+  
+  wspeed_u <- as.vector(wspeed_u)
+  wspeed_v = as.vector(wspeed_v)
+  mean_wspeed = as.vector(mean_wspeed)
+  mean_current_wspeed = as.vector(mean_current_wspeed)
+  
+  data_df <- data.frame(cbind(lonlattime, wspeed_u, wspeed_v, mean_wspeed, mean_current_wspeed))
+  # 
+  # #drop all NA's
+  data_df = na.omit(data_df)
+  # 
+  # 
+  colnames(data_df) = c("longitude", "latitude","wind_speed_u","wind_speed_v","mean_wspeed","mean_current_wspeed")
+  
+  return(data_df)
+}
+```
+
+## Data Load
+
+Data used for this study was collected from a project called eReefs,
+initiated by the Australian Institute of Marine Science (AIMS). The AIMS
+eReefs platform provides current models of hydrodynamic and
+biogeochemical data for the GBR. From this source, relevant data for the
+GBR was obtained. The two datasets of interest to use were the
+hydrodynamics and biogeochemical datasets, and specific variables were
+chosen based on the expertise of Marine students and $R^2$ values.
+Whilst pH is an important variable to predict aragonite it was excluded
+due to problems of overfitting. Detailed variables are listed in the
+Appendix.
+
+All data files were stored as NetCDF files, requiring the ncd4 package
+in R for the collection process. We obtained five years of data from
+2015 - 2019 ensuring the size of our data-set. The longitude and
+latitude variables were extracted as the reference points for all other
+variables, also used for later analysis. Hydrodynamic and biogeochemical
+data-sets were merged based on coordinates. Consistency across the
+data-sets allowed for a complete match. Rows with missing values were
+removed as enough data was obtained. Downsizing was performed based on
+longitude, as latitude values were within close proximity of each other.
+Using a 1km grid, values were aggregated by taking the mean of entries
+within each grid cell. 
+
+```{r, warning=FALSE}
+nc2015 = "Coral_data/EREEFS_AIMS-CSIRO_GBR4_H2p0_B3p1_Cq3P_Dhnd_bgc_annual-annual-2015.nc"
+nc2016 = "Coral_data/EREEFS_AIMS-CSIRO_GBR4_H2p0_B3p1_Cq3P_Dhnd_bgc_annual-annual-2016.nc"
+nc2017 = "Coral_data/EREEFS_AIMS-CSIRO_GBR4_H2p0_B3p1_Cq3P_Dhnd_bgc_annual-annual-2017.nc"
+nc2018 = "Coral_data/EREEFS_AIMS-CSIRO_GBR4_H2p0_B3p1_Cq3P_Dhnd_bgc_annual-annual-2018.nc"
+nc2019 = "Coral_data/EREEFS_AIMS-CSIRO_GBR4_H2p0_B3p1_Cq3P_Dhnd_bgc_annual-annual-2019.nc"
+
+h2015 = "Coral_data/EREEFS_AIMS-CSIRO_gbr4_v2_hydro_annual-annual-2015.nc"
+h2016 = "Coral_data/EREEFS_AIMS-CSIRO_gbr4_v2_hydro_annual-annual-2016.nc"
+h2017 = "Coral_data/EREEFS_AIMS-CSIRO_gbr4_v2_hydro_annual-annual-2017.nc"
+h2018 = "Coral_data/EREEFS_AIMS-CSIRO_gbr4_v2_hydro_annual-annual-2018.nc"
+h2019 = "Coral_data/EREEFS_AIMS-CSIRO_gbr4_v2_hydro_annual-annual-2019.nc"
+
+df_2015 = read_NC(nc2015)
+df_2016 = read_NC(nc2016)
+df_2017 = read_NC(nc2017)
+df_2018 = read_NC(nc2018)
+df_2019 = read_NC(nc2019)
+
+h_2015 = read_NC2(h2015)
+h_2016 = read_NC2(h2016)
+h_2017 = read_NC2(h2017)
+h_2018 = read_NC2(h2018)
+h_2019 = read_NC2(h2019)
+```
+
+```{r}
+merged_2015 <- merge(df_2015, h_2015, by = c("latitude", "longitude"), all = FALSE)
+merged_2016 <- merge(df_2016, h_2016, by = c("latitude", "longitude"), all = FALSE)
+merged_2017 <- merge(df_2017, h_2017, by = c("latitude", "longitude"), all = FALSE)
+merged_2018 <- merge(df_2018, h_2018, by = c("latitude", "longitude"), all = FALSE)
+merged_2019 <- merge(df_2019, h_2019, by = c("latitude", "longitude"), all = FALSE)
+```
+
+```{r}
+data = merged_2015[, !(names(merged_2015) %in% c("seagrass", "coral bleach 
+rate"))]
+
+min_lon <- min(data$longitude)
+max_lon <- max(data$longitude)
+lon_grid <- seq(min_lon, max_lon, by = 0.01)
+data$cell_id <- cut(data$longitude, breaks = lon_grid, labels = FALSE)
+
+vars_to_agg = as.data.frame(data[,3:ncol(data)])
+
+aggregated_df = aggregate(vars_to_agg, by = list(data$cell_id), FUN = 
+mean)
+coords = distinct(data, cell_id, .keep_all = TRUE)
+
+coords = coords[c("longitude","latitude","cell_id")]
+
+aggregated_final = merge(aggregated_df,coords,by="cell_id")
+
+
+aggregated_final_2015 = aggregated_final[, c(ncol(aggregated_final) - 1, 
+ncol(aggregated_final), 3:(ncol(aggregated_final) - 2))]
+
+data = merged_2016[, !(names(merged_2016) %in% c("seagrass", "coral bleach 
+rate"))]
+
+min_lon <- min(data$longitude)
+max_lon <- max(data$longitude)
+lon_grid <- seq(min_lon, max_lon, by = 0.01)
+data$cell_id <- cut(data$longitude, breaks = lon_grid, labels = FALSE)
+
+vars_to_agg = as.data.frame(data[,3:ncol(data)])
+
+aggregated_df = aggregate(vars_to_agg, by = list(data$cell_id), FUN = 
+mean)
+coords = distinct(data, cell_id, .keep_all = TRUE)
+
+coords = coords[c("longitude","latitude","cell_id")]
+
+aggregated_final = merge(aggregated_df,coords,by="cell_id")
+
+
+aggregated_final_2016 = aggregated_final[, c(ncol(aggregated_final) - 1, 
+ncol(aggregated_final), 3:(ncol(aggregated_final) - 2))]
+
+data = merged_2017[, !(names(merged_2017) %in% c("seagrass", "coral bleach 
+rate"))]
+
+min_lon <- min(data$longitude)
+max_lon <- max(data$longitude)
+lon_grid <- seq(min_lon, max_lon, by = 0.01)
+data$cell_id <- cut(data$longitude, breaks = lon_grid, labels = FALSE)
+
+vars_to_agg = as.data.frame(data[,3:ncol(data)])
+
+aggregated_df = aggregate(vars_to_agg, by = list(data$cell_id), FUN = 
+mean)
+coords = distinct(data, cell_id, .keep_all = TRUE)
+
+coords = coords[c("longitude","latitude","cell_id")]
+
+aggregated_final = merge(aggregated_df,coords,by="cell_id")
+
+
+aggregated_final_2017 = aggregated_final[, c(ncol(aggregated_final) - 1, 
+ncol(aggregated_final), 3:(ncol(aggregated_final) - 2))]
+
+
+data = merged_2018[, !(names(merged_2018) %in% c("seagrass", "coral bleach 
+rate"))]
+
+min_lon <- min(data$longitude)
+max_lon <- max(data$longitude)
+lon_grid <- seq(min_lon, max_lon, by = 0.01)
+data$cell_id <- cut(data$longitude, breaks = lon_grid, labels = FALSE)
+
+vars_to_agg = as.data.frame(data[,3:ncol(data)])
+
+aggregated_df = aggregate(vars_to_agg, by = list(data$cell_id), FUN = 
+mean)
+coords = distinct(data, cell_id, .keep_all = TRUE)
+
+coords = coords[c("longitude","latitude","cell_id")]
+
+aggregated_final = merge(aggregated_df,coords,by="cell_id")
+
+
+aggregated_final_2018 = aggregated_final[, c(ncol(aggregated_final) - 1, 
+ncol(aggregated_final), 3:(ncol(aggregated_final) - 2))]
+
+
+data = merged_2019[, !(names(merged_2019) %in% c("seagrass", "coral bleach 
+rate"))]
+
+min_lon <- min(data$longitude)
+max_lon <- max(data$longitude)
+lon_grid <- seq(min_lon, max_lon, by = 0.01)
+data$cell_id <- cut(data$longitude, breaks = lon_grid, labels = FALSE)
+
+vars_to_agg = as.data.frame(data[,3:ncol(data)])
+
+aggregated_df = aggregate(vars_to_agg, by = list(data$cell_id), FUN = 
+mean)
+coords = distinct(data, cell_id, .keep_all = TRUE)
+
+coords = coords[c("longitude","latitude","cell_id")]
+
+aggregated_final = merge(aggregated_df,coords,by="cell_id")
+
+
+aggregated_final_2019 = aggregated_final[, c(ncol(aggregated_final) - 1, 
+ncol(aggregated_final), 3:(ncol(aggregated_final) - 2))]
+
+```
+
+```{r}
+merge1516 = rbind(aggregated_final_2015, aggregated_final_2016)
+merge151617 = rbind(merge1516, aggregated_final_2017)
+merge15161718 = rbind(merge151617, aggregated_final_2018)
+merge_all = rbind(merge15161718, aggregated_final_2019)
+
+```
+
+## Regression Modelling
+
+Our choice of selecting KNN, SVM and linear-regression models is
+supported by relevant published research. Burns et al. (2022) and
+Nathaphon et al. (2022) demonstrate the effectiveness of SVM and KNN in
+predicting environmental factors related to coral reefs. Meanwhile,
+research conducted by Lowe et al.(2011) and Ellis et al. (2019)
+highlights the relevance of linear-regression in understanding reef
+dynamics. By leveraging these established algorithms, our
+interdisciplinary approach enhances the accuracy and robustness of our
+predictions. 
+
+### Linear Regression
+
+First, we manually filter out variables that we don't need based on
+marine science and apply backward selection to get the backward
+selection model.
+
+```{r}
+merge <- subset(merge_all, select = -c(co2, pH, wind_speed_u, wind_speed_v, carbonate, mean_current_wspeed, date))
+
+m1 = lm(aragonite ~ ., data = merge)
+m2 = step.back.aic = step(m1, direction = "backward", trace = FALSE)
+```
+
+<center>**Table 1: Summary of Backward Selection Model**</center>
+
+The final backward selection model include finesed, salinity, macroalgae
+production, temperature, and mean wind speed as independent variables.
+
+```{r message=FALSE, warning = FALSE}
+ summ(m2)
+
+equatiomatic::extract_eq(m2, use_coefs=TRUE, wrap = TRUE)
+
+```
+
+Our backward selection model shows excellent performance with an
+R-square value of 95.4%. However, to enhance user convenience in the
+shiny app, we have included latitude and longitude in our model. This
+addition allows users to predict aragonite levels for specific
+coordinates. The shiny app will utilize the provided data, including
+coordinates, to generate predictions, and subsequently display the
+corresponding point on the GBR map
+
+The R-square of the final model is 95.3%.
+
+```{r}
+m3 = lm(formula = aragonite ~ finesed + salinity + `macroalgae production` + 
+    temp + mean_wspeed + latitude + longitude, data = merge)
+```
+
+<center>**Table 2: Summary of Backward Model with Coordinates**</center>
+
+This is selected as our final model.
+
+```{r message=FALSE, warning = FALSE}
+summ(m3)
+equatiomatic::extract_eq(m3, use_coefs=TRUE, wrap = TRUE)
+```
+
+The R-square of the final model is 95.3%. <br>
+
+### Interaction
+
+We also consider if the interaction is significant to our model. Wind
+speed and temperature are closely related and interact. Firstly,
+temperature differences can generate pressure gradients, which in turn
+drive wind flow. The pressure gradient between these regions causes air
+to move, resulting in wind. Secondly, temperature influences the amount
+of moisture air can hold. Warm air can hold more water vapour than cold
+air. Wind speed can also affect temperature by transporting air masses
+from different regions, which may have varying temperature
+characteristics. Therefore, wind speed and temperature are
+interconnected and play a crucial role in shaping weather patterns and
+climate conditions.
+
+```{r}
+m3 = lm(formula = aragonite ~ finesed + salinity + `macroalgae production` + 
+    temp + mean_wspeed + latitude + longitude + temp:mean_wspeed, data = merge)
+```
+
+<center>**Table 3: Summary of Final Model (with interaction)**</center>
+
+```{r message=FALSE, warning = FALSE}
+summ(m3)
+equatiomatic::extract_eq(m3, use_coefs=TRUE, wrap = TRUE)
+```
+
+Table-3 reveals that temperature loses its significance when we
+incorporate the interaction between temperature and wind speed. This
+implies that the previous model's significant relationship with
+temperature was actually due to the interaction between temperature and
+wind speed, rather than temperature alone. Additionally, Table-3
+indicates that the inclusion of this interaction leads to an increase of
+approximately 0.1% in the R-square value.
+
+As a result, we add the temp:windspeed and keep the temperature in the
+final model.
+
+### Support Vector Machine
+
+SVM model using 10-CV analysis
+
+```{r}
+set.seed(3888)
+
+svm_model = svm(aragonite ~ finesed + salinity + `macroalgae production` + 
+    temp + mean_wspeed  + latitude + longitude + temp:mean_wspeed, data = merge)
+
+```
+
+### K-Nearest Neighbor
+
+KNN model using 10-CV analysis
+
+```{r}
+# Define the training control
+ctrl <- trainControl(method = "cv", number = 10)
+
+# Define k-NN model
+knn_model <- train(aragonite ~ finesed + salinity + `macroalgae production` + 
+    temp + mean_wspeed + latitude + longitude + temp:mean_wspeed, data = merge, method = "knn",
+trControl = ctrl, tuneGrid = data.frame(k = seq(1, 10, by = 1)))
+
+# Make predictions using the cross-validated model
+#predictions <- predict(knn_model, newdata = merge)
+
+```
+
+## Assumption Checking
+
+For our model, backward selection and simple, assumptions for 4 aspects
+have been assessed - linearity, Independence, homoscedasticity and
+normality.
+
+```{r warning=FALSE, fig.height=3, fig.topcaption=TRUE, fig.align='center', fig.cap="Figure 1: Fitted values vs residuals plot \\& QQ-plot for backward model", fig.pos = "H", echo=FALSE}
+autoplot(m3, which = 1:2) + theme_bw()
+```
+
+-   **Residual Plot**: According to figure 1, there is no obvious smiley
+    or frowny face in residual vs fitted values plots when the fitted
+    value is greater than 3.475. However, there is a smiley face when
+    the fitted value is less than 3,475, thus assuming non-linearity.
+    But since the smiley face is not obvious, we can accept that
+    linearity is slightly violated.
+
+-   **Independence** is barely met due to the experimental design such
+    that for each location, an observation is made annually for five
+    years. But since the time interval is long enough, we can accept
+    that independence doesn't meet perfectly.
+
+-   **Homoscedasticity** according to figure 1, the spread doesn't look
+    reasonably constant over the range of fitted values, and there is a
+    diamond pattern in both residual vs fitted plots. So, we can say
+    that homoscedasticity doesn't exist. However, since the spread of
+    residual is narrower when the fitted value is below 30 and wider
+    above 60, we can accept that the homoscedasticity doesn't perfectly
+    meet in this case.
+
+-   **Normality** is assumed as shown by linear QQ-plots of each model;
+    most of the points are close to the line.
+
+-   **Transformation**: We try to transform the model by using log() on
+    predictors, but still not satisfied with linearity and
+    homoscedasticity. To get a model that is easy to interpret, We leave
+    the model as it is.
+
+## Model Evaluation
+
+To evaluate the performance and accuracy of our predictive models, we
+employ two widely used evaluation metrics: Root Mean Squared Error
+(RMSE) and Mean Absolute Error (MAE). These metrics provide valuable
+insights into the models' predictive capabilities and their ability to
+estimate aragonite levels in coral reefs.
+
+```{r}
+set.seed(3888)
+
+cv_knn = train(aragonite ~ finesed + salinity + `macroalgae production` + temp + mean_wspeed + latitude + longitude + temp:mean_wspeed, data = merge,
+ method = "knn",
+ trControl = trainControl(
+ method = "cv", number = 10,
+ verboseIter = FALSE
+ )
+)
+
+cv_svm = train(aragonite ~ finesed + salinity + `macroalgae production` + temp + mean_wspeed + latitude+longitude + temp:mean_wspeed, data = merge,
+ method = "svmLinear",
+ trControl = trainControl(
+ method = "cv", number = 10,
+ verboseIter = FALSE
+ )
+)
+
+cv_lm = train(aragonite ~ finesed + salinity + `macroalgae production` + temp + mean_wspeed + latitude+longitude + temp:mean_wspeed, data = merge,
+ method = "lm",
+ trControl = trainControl(
+ method = "cv", number = 10,
+ verboseIter = FALSE
+ )
+)
+
+results <- resamples(list(KNN = cv_knn,  SVM = cv_svm, Linear_Model = cv_lm))
+
+c(mean(cv_lm$resample$RMSE), mean(cv_knn$resample$RMSE), mean(cv_svm$resample$RMSE))
+c(mean(cv_lm$resample$MAE), mean(cv_knn$resample$MAE),mean(cv_svm$resample$MAE))
+```
+
+### RMSE & MAE
+
+```{r warning=FALSE, fig.height=2, fig.topcaption=TRUE, fig.align='center', fig.cap="Figure 2: RMSE & MAE between linear regression, SVM and KNN"}
+
+# Plot both RMSE and MAE on the same graph
+plot_rmse <- ggplot(results, metric = "RMSE") +
+  labs(y = "RMSE")
+
+plot_mae <- ggplot(results, metric = "MAE") +
+  labs(y = "MAE")
+
+gridExtra::grid.arrange(plot_rmse, plot_mae, ncol = 2)
+
+```
+
+Our mean root-mean-squared-error for the linear model, 0.008745511, is
+slightly smaller than the svm model, 0.008859468, as shown in figure 2.
+Compared to lm and svm, mean RMSE of KNN model is only 0.003598737, much
+lower than both of them. So we could say the KNN model is doing a better
+prediction.
+
+Mean MAE for the lm model is 0.006705319 and 0.006714421 for the SVM
+model, as shown in figure 2. For KNN, the mean MAE is 0.001792831. This
+also suggests that the KNN model makes the best prediction.
+
+```{r}
+sd(merge$aragonite)
+```
+
+By comparing the RMSE(0.003598737) and MAE(0.001792831) of KNN model
+with the standard deviation(0.04138637) of the original aragonite data,
+we can say that all three models are more reliable than randomly select
+a result from the aragonite data.
+
+## Evaluation Conclusion
+
+Through the evaluation of RMSE and MAE, we gain valuable insights into
+the predictive capabilities of our models and can make informed
+decisions regarding model selection. By selecting the model with the
+lowest RMSE and MAE, we aim to ensure the highest level of accuracy in
+predicting aragonite levels, enhancing our ability to support
+decision-making processes in marine park conservation efforts and
+effectively protect coral reef ecosystems.
+
+In our case, the KNN model has the lowest RMSE and MAE, and both of them
+are less than the standard deviation of the original.\*\*As a result, we
+select the KNN model as the final model.\*\*
+
+# Results
+
+As part of our data science approach, we thoroughly assess the
+scalability and stability of the chosen models. Scalability refers to
+the model's ability to handle increasing data sizes efficiently,
+ensuring that our predictions remain reliable even as the dataset grows.
+Stability refers to the consistency of the models' performance across
+different subsets of the data, guaranteeing that the predictions are
+robust and not overly influenced by specific instances or outliers.
+
+## Model Scalability
+
+To evaluate scalability, we increase the dataset size and measure the
+execution time of each model. This analysis allows us to identify any
+potential limitations or bottlenecks that may arise when applying the
+models to larger datasets.
+
+```{r message=FALSE, warning=FALSE}
+set.seed(3888)
+
+knn_check <- function(data, size) {
+  data <- data[1:size, ]
+  start_time <- Sys.time()
+  predictions <- predict(knn_model, newdata = data)
+  end_time <- Sys.time()
+  return(end_time - start_time)
+}
+
+svm_check <- function(data, size) {
+  data <- data[1:size, ]
+  start_time <- Sys.time()
+  predictions = predict(svm_model, newdata=data)
+  end_time <- Sys.time()
+  return(end_time - start_time)
+}
+
+linear_check <- function(data, size) {
+  data <- data[1:size, ]
+  start_time <- Sys.time()
+  predictions <- predict(m3 , newdata = data)
+  end_time <- Sys.time()
+  return(end_time - start_time)
+}
+
+
+```
+
+```{r warning=FALSE, fig.topcaption=TRUE, fig.align='center', fig.cap="Figure 3: Execution Time of k-NN, SVM, and Linear Regression Models"}
+
+
+sizes <- c(10, 20, 40, 80, 160, 320, 640, 1280, 2000)
+
+knn_times <- sapply(sizes, function(x) knn_check(merge, x))
+svm_times <- sapply(sizes, function(x) svm_check(merge, x))
+linear_times <- sapply(sizes, function(x) linear_check(merge, x))
+
+
+results <- data.frame(model = rep(c("k-NN", "SVM", "Linear Regression"), each = length(sizes)),
+                      size = rep(sizes, times = 3),
+                      time = c(knn_times, svm_times, linear_times))
+
+# Plot the results
+ggplot(results, aes(x = size, y = time, color = model)) +
+  geom_line() +
+  labs(x = "Data Size", y = "Execution Time (Seconds)") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+The analysis of model scalability showed distinct patterns in execution
+time as the data size increased. The SVM model had the steepest slope,
+indicating a significant increase in execution time with larger
+datasets. This is because the SVM algorithm involves solving a quadratic
+optimization problem, which becomes more computationally complex as the
+dataset grows.
+
+On the other hand, the k-NN model exhibited a moderate increase in
+execution time as the data size expanded. The k-NN algorithm searches
+for nearest neighbours in the training data for each prediction, which
+becomes more computationally intensive with larger datasets. However,
+the increase in execution time for k-NN was relatively less significant
+compared to SVM.
+
+In contrast, the linear-regression model showed the fastest execution
+time. It displayed a stable line with minimal variation across different
+data sizes. This is because linear-regression involves solving a system
+of linear equations, which has low computational overhead. As a result,
+linear-regression performs efficiently and consistently regardless of
+the data size.
+
+## Model Stability
+
+We assess model stability using k-fold cross-validation, dividing the
+data into subsets for iterative training and testing. This approach
+allows for the measurement of consistency and robustness in performance,
+ensuring our models are not hypersensitive to variations in the data.
+
+```{r, message=FALSE,warning=FALSE}
+#stability code
+
+percent_holdout = list(0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7)
+set.seed(3888)
+acc_lm = acc_knn = acc_svm = c()
+r_square = list()
+for (i in percent_holdout){
+  n_hold = round(i*nrow(merge))
+  holdout_rows <- sample(nrow(merge), n_hold, replace = FALSE)
+  newdata = merge[-holdout_rows,]
+  lm_test = train(aragonite ~ finesed + salinity + `macroalgae production` + temp + mean_wspeed + latitude+longitude + temp:mean_wspeed, data = newdata,
+ method = "lm",
+ trControl = trainControl(
+ method = "cv", number = 10,
+ verboseIter = FALSE
+ ))
+  
+  svm_test = train(aragonite ~ finesed + salinity + `macroalgae production` + temp + mean_wspeed + latitude+longitude + temp:mean_wspeed, data = newdata,
+ method = "svmLinear",
+ trControl = trainControl(
+ method = "cv", number = 10,
+ verboseIter = FALSE
+ )
+)
+  knn_test = train(aragonite ~ finesed + salinity + `macroalgae production` + temp + mean_wspeed + latitude + longitude + temp:mean_wspeed, data = merge,
+ method = "knn",
+ trControl = trainControl(
+ method = "cv", number = 10,
+ verboseIter = FALSE
+ )
+)
+  acc_lm = c(acc_lm,mean(lm_test$resample$Rsquared))
+  acc_knn = c(acc_knn, mean(knn_test$resample$Rsquared))
+  acc_svm = c(acc_svm, mean(svm_test$resample$Rsquared))
+}
+
+```
+
+```{r warning=FALSE, fig.topcaption=TRUE, fig.align='center', fig.cap="Figure 4: Performance of k-NN, SVM, and Linear Regression Models on x% of original dataset"}
+stability_df = data.frame(model = rep(c("k-NN", "SVM", "Linear Regression"), each = length(percent_holdout)),
+                      Percent_holdout = unlist(percent_holdout),
+                      r_squared = c(acc_knn, acc_svm, acc_lm))
+
+stability_plot = ggplot(stability_df, aes(x = Percent_holdout, y = r_squared, color = model)) +
+  geom_line() +
+  labs(x = "Percent holdout", y = "R-squared") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  scale_x_continuous(breaks = c(0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7))
+
+stability_plot
+```
+
+Testing models on different data subset sizes from 95% to 30% showed KNN
+as the most stable and accurate. Linear-regression and SVM exhibited
+similar stability with minor fluctuations. It can be concluded that the
+performance of the linear model is highly stable, suggesting that the
+model is not overfitted to our training data and performs well on unseen
+data. The mean r-squared values for all tests were around 95%, with the
+best performance being 95.55% which was the result of testing with 90%. 
+
+Interestingly, the performance of the model tested on 70% and 40% of the
+original dataset performed the worst. The fluctuations in performance
+appear to be random with no observable pattern, indicating these changes
+are likely caused by random factors such as suboptimal subset selection
+or close proximity of included data points. Overall, the linear model
+demonstrated reliable stability and predictive capability.
+
+------------------------------------------------------------------------
+
+Thus, Linear Regression is selected as the regression model for our
+project due to its time and predictive efficiency.
+
+These findings highlight the importance of considering scalability as
+well as stability when selecting a model for our project, ensuring that
+it can handle the anticipated data sizes effectively and accurate
+predictions in the real-time deployment of our Shiny app.
+
+## Shiny App
+
+Our innovative product aids coral reef conservation by evaluating reef
+health using an interactive map and risk calculator that predicts
+Aragonite levels. The product presents a comprehensive view of the
+aragonite levels at specific coordinates over time, with visual
+clustering and plotting. The colours of the risk calculator output
+correspond to reef health. Red indicates the coral is under stress,
+orange indicates possible stress and green indicates a healthy coral
+reef. Users can further adjust key prediction variables to understand
+their impact on coral health. Flexible data plotting options allow users
+to input new points or select existing data points, facilitating
+exploratory and focused research.
+
+```{r}
+knitr::include_graphics("shiny.png")
+```
+
+Using our shiny app, we predicted aragonite saturation for
+representative concentration pathways (RCP) 2.6 and 8.5 at 2050 and
+2100. RCP 8.5 represents "business as usual", while RCP 2.6 is an
+optimistic outlook with limited temperature increases (IPCC, 2014). Our
+model projected an approximately 1% in aragonite saturation for both
+scenarios and time points. Temperature and salinity values under the
+respective RCP scenarios were used for these predictions, while other
+variables remained constant (IPCC, 2014 & Akhiljith et al., 2019). All
+scenarios yielded aragonite saturation values above 3, indicating
+favourable conditions for coral accretion through carbonate structure
+formation.
+
+# Discussion
+
+## Model discussion
+
+The Linear-regression equation quantifies the impact of each variable on
+Aragonite saturation levels, indicating the direction and magnitude of
+their influence.
+
+As latitude and longitude move towards the equator, temperature tends to
+increase, leading to higher aragonite as the solubility of calcium
+carbonate increases (Xue et al., 2020). Increased salinity can decrease
+aragonite due to higher alkalinity (Kuchinke et al., 2014). Fine
+sediments can reduce water quality, enhancing ocean acidification (Smith
+et al., 2020). Higher wind speeds can alter atmospheric conditions,
+bring acidified water, and increase upwelling of aragonite-poor water
+(Harris et al., 2013 & Xue et al. 2018). Lower aragonite levels may
+reduce calcification, allowing macro-algae colonization (Smith et al.,
+2020).
+
+## Limitations
+
+The analysis of aragonite data raises several concerns:
+
+1.  Potential over-fitting due to the data distribution
+2.  Down-sampling by using the first day of the year
+3.  Violation of linear-model assumptions (independence,
+    homoscedasticity, linearity)
+4.  Exclusion of time as a co-variate, and the direct use of latitude
+    and longitude instead of spatial regression.
+5.  Data limitations that affect accuracy and reliability: Absolute
+    accuracy varies significantly based on variable and location.
+    Sediment data is based on 2019 experimental data, extrapolated into
+    the past using historic weather and river data. Because of land use
+    improvement, earlier values for fine sediment may be underestimated.
+    Additionally, some argue that aragonite saturation is unreliable,
+    with prior studies being unable to differentiate the effects of
+    aragonite and ocean acidity since the two are highly interlinked
+    (Jury 2008).
+
+## Improvement process
+
+The points below outline areas for improvement in our study:
+
+1.  [Increase the frequency of data sampling]{.underline}: Since only
+    one observation is made per site per year, this may limit the
+    independence of the data. Increasing the sampling frequency, such as
+    quarterly or monthly observations, can provide more data points to
+    enhance the stability and accuracy of the model.
+
+2.  [Consider more influencing factors]{.underline}: Other factors that
+    may influence the level of Aragonite such as bleaching, bioerosion
+    and water flow rate can be considered. By including more
+    comprehensive influencing factors, the predictive power of the model
+    can be improved.
+
+3.  [Explore spatial regressions:]{.underline} This can provide a more
+    in-depth analysis of the impact of reef location on Aragonite
+    levels. Despite including longitude and latitude in the linear
+    model, spatial regression can allow us to better capture the spatial
+    patterns and correlation that exists within our data.
+
+## Future Work
+
+It is recommended that the forecast model be evaluated and improved
+regularly to ensure its long-term stability and accuracy of its
+performance. This can include methods such as backtracking,
+cross-validation, and updating data sets to continuously improve the
+predictive power and adaptability of the model
+
+Additionally, to build upon our study would be useful to extend our
+model to predict physical coral growth instead of a component such as
+aragonite saturation state. This could be in the form of reef mass or
+vertical accretion and would give a more comprehensive view of coral
+reef accretion and erosion on the GBR.
+
+# Conclusion
+
+In our study, we employed a linear-regression model to predict aragonite
+saturation on the Great Barrier Reef. Model evaluation played a crucial
+role in validating our approach and selecting the appropriate model. We
+assessed the stability and scalability of the models, considering their
+ability to handle different data-set sizes and maintain consistent
+performance. Additionally, we used mean absolute error (MAE) and root
+mean square error (RMSE) metrics to quantify the predictive accuracy of
+the models.
+
+Through rigorous evaluation, we found that the linear-regression model
+outperformed the k-nearest neighbors (KNN) and support vector machine
+(SVM) models in terms of stability, scalability, and predictive
+accuracy. The linear-regression model demonstrated better generalization
+capabilities, making it a more suitable choice for our specific research
+objective. 
+
+Our model was able to predict aragonite saturation on the GBR. However,
+for future predictions under two RCP scenarios using salinity and
+temperature, we found that the aragonite saturation state increases,
+indicating accretion. This may not be the most reliable result as only
+two of our predictor variables were used, therefore, more effort should
+be placed in modelling future values of our variables. It would also be
+useful to model the physical growth of coral reefs to have more
+conclusive results regarding accretion/erosion. 
+
+To conclude, by leveraging the strengths of the linear-regression model
+and evaluating it against relevant criteria, we gained confidence in its
+ability to accurately predict aragonite saturation levels on the Great
+Barrier Reef.
+
+# Student Contribution
+
++-----------------+-----------------------------------------------------+
+| Student         | Contribution                                        |
++=================+=====================================================+
+| Simon Um        | Contributed to the formation of research questions, |
+|                 | aims, and audience. Wrote introduction.             |
++-----------------+-----------------------------------------------------+
+| Jasmine         | Contributed to the formation of research questions, |
+| Glencross       | aims, and audience. Found data for model & RCP      |
+|                 | scenarios. Assisted with a model and shiny app from |
+|                 | a marine perspective. Contributed marine            |
+|                 | perspective to methods and results, and wrote       |
+|                 | discussion.                                         |
++-----------------+-----------------------------------------------------+
+| Kade            | Contributed to the limitations, improvements and    |
+| Jansen-Daniel   | future work in the report.                          |
++-----------------+-----------------------------------------------------+
+| Adda Ding       | Contributed to the method, evaluation and editing   |
+|                 | of the report. Wrote the code for data              |
+|                 | downsampling, data processing and model evaluation. |
++-----------------+-----------------------------------------------------+
+| Shreya Kothari  | Contributed to the introduction, evaluation and     |
+|                 | conclusion of the report, including criteria        |
+|                 | referencing. Additionally, wrote the code for       |
+|                 | assessing model performance and helped with data    |
+|                 | merging.                                            |
++-----------------+-----------------------------------------------------+
+| Shiyuan Li      | Contributed to model training, evaluation           |
+|                 | (quantitative, graphical, qualitative), and         |
+|                 | interaction.                                        |
++-----------------+-----------------------------------------------------+
+| James           | Contributed to deploying the final product and      |
+| Agamemnonos     | Shiny App description for the report                |
++-----------------+-----------------------------------------------------+
+| Hangrui Shi     | Contributed to writing the Improvement process and  |
+|                 | future work for both, data science and marine       |
+|                 | perspective. Additionally, helped in data           |
+|                 | pre-processing and cleaning.                        |
++-----------------+-----------------------------------------------------+
+
+: Student Contribution
+
+# References
+
+-   Allender, B. M. (1977). Effects of emersion and temperature upon
+    growth of the tropical brown alga Padina japonica, using a
+    tide-simulation apparatus. Marine Biology, 40, 95-99.
+
+-   AIMS eReefs. (2019). AIMS eReef Visualisation Portal. Retrieved from
+    <https://thredds.ereefs.aims.gov.au/thredds/s3catalogue/aims-ereefs-public-prod/derived/ncaggregate/ereefs/GBR4_H2p0_B3p1_Cq3P_Dhnd/annual-annual/catalog.html>
+
+-   AIMS eReefs. (2023). AIMS eReefs Visualisation Portal. Retrieved
+    from
+    <https://thredds.ereefs.aims.gov.au/thredds/s3catalogue/aims-ereefs-public-prod/derived/ncaggregate/ereefs/gbr4_v2/annual-annual/catalog.html>
+
+-   Akhiljith, P. J., Liya, V. B., Rojith, G., Zacharia, P. U., Grinson,
+    G., Ajith, S., Lakshmi, P. M., Sajna, V. H., & Sathianandan, T. V.
+    (2019). Climatic projections of Indian Ocean during 2030, 2050, 2080
+    with implications on fisheries sector. Journal of Coastal Research,
+    86, 198--208. <https://doi.org/10.2112/si86-030.1>
+
+-   Burns, C. J., Bollard, B., & Narayanan, A. (2022). Machine-Learning
+    for Mapping and Monitoring Shallow Coral Reef Habitats. 14(11),
+    2666--2666. <https://doi.org/10.3390/rs14112666>
+
+-   Cheng, L., von Schuckmann, K., Abraham, J. P., Trenberth, K. E.,
+    Mann, M. E., Zanna, L., England, M. H., Zika, J. D., Fasullo, J. T.,
+    Yu, Y., Pan, Y., Zhu, J., Newsom, E. R., Bronselaer, B., & Lin, X.
+    (2022). Past and future ocean warming. Nature Reviews Earth &
+    Environment, 3(11), 776- 794.
+    <https://doi.org/10.1038/s43017-022-00345-1>
+
+-   Cornwall, C. E., Comeau, S., Kornder, N. A., Perry, C. T., van
+    Hooidonk, R., DeCarlo, T. M., Pratchett, M. S., Anderson, K. D.,
+    Browne, N., Carpenter, R., Diaz-Pulido, G., D'Olivo, J. P., Doo, S.
+    S., Figueiredo, J., Fortunato, S. A. V., Kennedy, E., Lantz, C. A.,
+    McCulloch, M. T., González-Rivero, M., . . . Lowe, R. J. (2021).
+    Global declines in coral reef calcium carbonate production under
+    ocean acidification and warming. Proceedings of the National Academy
+    of Sciences, 118(21), e2015265118.
+    <https://doi.org/doi:10.1073/pnas.2015265118>
+
+-   Debernard, J. B., & RØed, L. P. (2008). Future wind, wave and storm
+    surge climate in the Northern Seas: Arevisit. Tellus A, 60,
+    427--438. <https://doi.org/10.3402/tellusa.v60i3.15370>
+
+-   Doney, S. C., Fabry, V. J., Feely, R. A., & Kleypas, J. A. (2009).
+    Ocean Acidification: The Other CO2 Problem. Annual review of marine
+    science, 1(1), 169-192.
+    <https://doi.org/10.1146/annurev.marine.010908.163834>
+
+-   Ellis, J. I., Jamil, T., Anlauf, H., Coker, D. J., João Cúrdia,
+    Hewitt, J. E., Jones, B. H., Krokos, G., Kürten, B., Hariprasad, D.,
+    Roth, F., Carvalho, S., & Ibrahim Hoteit. (2019). Multiple stressor
+    effects on coral reef ecosystems. 25(12), 4131--4146.
+    <https://doi.org/10.1111/gcb.14819>
+
+-   Harris, K. E., DeGrandpre, M. D., & Hales, B. (2013). Aragonite
+    saturation state dynamics in a coastal upwelling zone. Geophysical
+    Research Letters, 40(11), 2720--2725.
+    <https://doi.org/10.1002/grl.50460>
+
+-   IPCC. (2014). Topic 2: Future changes, risks and impacts. IPCC 5th
+    Assessment Synthesis Report.
+    <https://ar5-syr.ipcc.ch/topic_futurechanges.php>
+
+-   Jiang, L.-Q., Feely, R. A., Carter, B. R., Greeley, D. J.,
+    Gledhill, D. K., & Arzayus, K. M. (2015). Climatological
+    distribution of aragonite saturation state in the Global Oceans.
+    Global Biogeochemical Cycles, 29(10), 1656--1673.
+    <https://doi.org/10.1002/2015gb005198>
+
+-   Jury, C. P. (2008). Aragonite Saturation State and Seawater PH Do
+    Not Predict Rates of Calcification in a Reef-building Coral
+    (Doctoral dissertation, University of North Carolina Wilmington).
+
+-   Kim, D., Choi, S.-H., Yang, E.-J., Kim, K.-H., Jeong, J.-H., &
+    Kim, Y. O. (2013). Biologically Mediated Seasonality of Aragonite
+    Saturation States in Jinhae Bay, Korea. Journal of Coastal Research,
+    29(6), 1420-1426. <https://doi.org/10.2112/jcoastres-d-12-00205.1>
+
+-   Klink, K. (1999). Trends in mean monthly maximum and minimum surface
+    wind speeds in the coterminous United States, 1961 to 1990. Climate
+    Research, 13, 193--205. <https://doi.org/10.3354/cr013193>
+
+-   Kuchinke, M., Tilbrook, B., & Lenton, A. (2014). Seasonal
+    variability of aragonite saturation state in the Western Pacific.
+    Marine Chemistry, 161, 1--13.
+    <https://doi.org/10.1016/j.marchem.2014.01.001>
+
+-   Kurihara, Y., Tuleya, R. E., & Bender, M. A. (1998). The GFDL
+    hurricane prediction system and its performance in the 1995
+    hurricane season. Monthly weather review, 126(5), 1306-1322.
+
+-   Li, S. (1996). Estimating tropical cyclone intensity from climate
+    models. Macquarie University.
+
+-   Lowe, P. T., Bruno, J. F., Selig, E. R., & Spencer, M. (2011).
+    Empirical Models of Transitions between Coral Reef States: Effects
+    of Region, Protection, and Environmental Change. 6(11),
+    e26339--e26339. <https://doi.org/10.1371/journal.pone.0026339>
+
+-   Magaña-Gallegos, E., Villegas-Muñoz, E., Salas-Acosta, E. R.,
+    Barba-Santos, M. G., Silva, R., & van Tussenbroek, B. I. (2023). The
+    Effect of Temperature on the Growth of Holopelagic Sargassum
+    Species. Phycology, 3(1), 138-146.
+
+-   Nathaphon Boonnam; Tanatpong Udomchaipitak; Supattra Puttinaovarat;
+    Thanapong Chaichana; Veera Boonjing; Jirapond Muangprathub. (2022).
+    Coral Reef Bleaching under Climate Change: Prediction Modeling and
+    Machine Learning. Sustainability, 14(10), 1--13.
+    <https://ideas.repec.org/a/gam/jsusta/v14y2022i10p6161-d818868.html>
+
+-   NOAA. (2015). Ocean acidification: Saturation state. Science On a
+    Sphere.
+    <https://sos.noaa.gov/catalog/datasets/ocean-acidification-saturation-state/#:~:text=particularly%20for%20juveniles-,Aragonite%20saturation%20state%20is%20commonly%20used%20to%20track%20ocean%20acidification,aragonite%20structures%20begin%20to%20dissolve>
+
+-   ‌Prathep, A., Kaewsrikhaw, R., Mayakun, J., & Darakrai, A. (2018).
+    The effects of light intensity and temperature on the calcification
+    rate of Halimeda macroloba. Journal of Applied Phycology, 30,
+    3405-3412.
+
+-   Quigley, K. M., Randall, C. J., Van Oppen, M. J. H., & Bay, L. K.
+    (2020). Assessing the role of historical temperature regime and
+    algal symbionts on the heat tolerance of coral juveniles. Biology
+    Open, 9(1), bio047316.
+
+-   Smith, J. N., Mongin, M., Thompson, A., Jonker, M. J., De'ath, G., &
+    Fabricius, K. E. (2020). Shifts in coralline algae, macroalgae, and
+    coral juveniles in the Great Barrier Reef associated with
+    present‐day ocean acidification. Global Change Biology, 26(4),
+    2149--2160. <https://doi.org/10.1111/gcb.14985>
+
+-   Walsh, K. J., & Ryan, B. F. (2000). Tropical cyclone intensity
+    increase near Australia as a result of climate change. Journal of
+    Climate, 13(16), 3029-3036.
+
+-   Xue, L., Cai, W.-J., Takahashi, T., Gao, L., Wanninkhof, R., Wei,
+    M., Li, K., Feng, L., & Yu, W. (2018). Climatic modulation of
+    surface acidification rates
+
+# Appendix
+
+1.  Appendix 1: All variables determined in analysis
+
++------------+----------------------+-----------------+------------+
+|**Variable**|**Description**       | **Measurement   |            |
+|            |                      | units**         |            |
++------------+----------------------+-----------------+------------+
+| Longitude  | Longitude            | \               |            |
+|            | coordinates          |                 |            |
++------------+----------------------+-----------------+------------+
+| Latitude   | Latitude coordinates | \               |            |
++------------+----------------------+-----------------+------------+
+| PH         | pH                   | $log(mM)$       |            |
++------------+----------------------+-----------------+------------+
+| CS_bleach  | Coral bleach rate    | $d^{-1}$        |            |
++------------+----------------------+-----------------+------------+
+| CO32       | Carbonate            | $mmol$ $m^{-3}$ |            |
++------------+----------------------+-----------------+------------+
+| MA_N\_pr   | Macroalgae net       | $mg$ $N$        |            |
+|            | production           | $m^{-2}$        |            |
+|            |                      | $d^{-1}$        |            |
++------------+----------------------+-----------------+------------+
+| omega_ar   | Aragonite saturation | \               |            |
+|            | state                |                 |            |
++------------+----------------------+-----------------+------------+
+| temp       | Temperature          | $degrees$       |            |
+|            |                      | $(˚C)$          |            |
++------------+----------------------+-----------------+------------+
+| salt       | Salinity             | $PSU$           |            |
++------------+----------------------+-----------------+------------+
+| pco2surf   | Oceanic $pCO_2$      | $ppmv$          |            |
++------------+----------------------+-----------------+------------+
+| FineSed    | Fine sediment        | $kg$ $m^{-3}$   |            |
++------------+----------------------+-----------------+------------+
+| SG_N\_pr   | Seagrass net         | $mg$ $N$        |            |
+|            | production           | $m^{-2}$        |            |
+|            |                      | $d^{-1}$        |            |
++------------+----------------------+-----------------+------------+
+| wspeed_u   | Eastward wind        | $ms^{-1}$       |            |
++------------+----------------------+-----------------+------------+
+| wspeed_v   | Northward wind       | $ms^{-1}$       |            |
++------------+----------------------+-----------------+------------+
+| m          | Mean wind speed      | $ms^{-1}$       |            |
+| ean_wspeed |                      |                 |            |
++------------+----------------------+-----------------+------------+
+| mean_cur   | Mean current speed   | $ms^{-1}$       |            |
++------------+----------------------+-----------------+------------+
+
+2.  Appendix 2: Shiny link app Link to Shiny App:
+    <https://jaga6416.shinyapps.io/3888>.

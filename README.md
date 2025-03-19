@@ -1,84 +1,142 @@
-# Great Barrier Reef Trichodesmium Analysis
+# Great Barrier Reef Aragonite Prediction
+
+![Great Barrier Reef](https://images.unsplash.com/photo-1439405326854-014607f694d7?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1400&q=80)
 
 ## Overview
-This Shiny application analyzes environmental factors affecting Trichodesmium blooms in the Great Barrier Reef. The app identifies optimal marine stations that accommodate suitable weather conditions and salinity levels to support the presence of Trichodesmium, an important cyanobacterium in the global nitrogen cycle.
 
-![Trichodesmium Bloom](https://cff2.earth.com/uploads/2019/09/15190611/capricorn_oli_2019244_lrg-1400x850.jpg)
+This interactive Shiny application predicts aragonite levels in the Great Barrier Reef based on environmental parameters. Aragonite, a critical component of coral reef structures, has a profound impact on reef accretion and erosion processes. By accurately predicting aragonite levels, we can gain valuable insights into the potential for reef growth or degradation in different areas, aiding in effective conservation planning.
 
-## About Trichodesmium
-Trichodesmium is a marine cyanobacterium that:
-- Plays a crucial role in the global nitrogen cycle
-- Contributes significantly to the input of atmospheric nitrogen into the ocean
-- Requires specific environmental conditions to bloom
-- Is affected primarily by temperature and salinity levels
+## Live Demo
 
-## Data
-The data used in this application was obtained from the Australian Institute of Marine Science (AIMS) and includes measurements from various stations across the Great Barrier Reef from 1992 to 2009.
+View the live application: [Great Barrier Reef Aragonite Analysis](https://shreya-sk.shinyapps.io/Great-Barrier-Reef-Aragonite-Analysis/)
 
-## Key Findings
-- **Optimal Months**: Trichodesmium blooms are most likely in March, May, and October
-- **Temperature Range**: Optimal temperatures range from approximately 25°C to 29°C
-- **Salinity Range**: Optimal salinity levels range from 35.6 psu to 38 psu
-- **Recommended Stations**:
-  1. John Brewer Reef
-  2. Townsville Shipping Channel
-  3. Woongarra Burkitts Reef
-  4. QSS1
+## Deployment Information
+
+- Deployed on: shinyapps.io
+- Last deployment: March 19, 2025
+- Status: [Check status](https://www.shinyapps.io)
 
 ## Features
-- Interactive visualizations of Trichodesmium presence based on:
-  - Season/Month
-  - Temperature
-  - Salinity
-- Station filtering based on optimal conditions
-- Statistical analysis of environmental factors
 
-## Installation
+- **Interactive Map**: Visualize aragonite levels across the Great Barrier Reef with color-coded markers
+- **Risk Calculator**: Predict aragonite levels based on environmental parameters
+- **Filtering Capabilities**: Filter data by year and enable/disable clustering for clearer visualization
+- **Add Custom Points**: Add new points to the map to analyze hypothetical scenarios
+- **Comprehensive Data Analysis**: Combine biogeochemical and hydrodynamic data for accurate predictions
+
+## Data Sources
+
+The application uses data from the eReefs project, which provides comprehensive environmental monitoring of the Great Barrier Reef. The data includes:
+
+- Biogeochemical parameters: pH, aragonite, temperature, salinity, carbonate, etc.
+- Hydrodynamic parameters: wind speed, currents, etc.
+
+Data files are stored in NetCDF format and are processed in the application to provide real-time analysis and visualization.
+
+## Installation and Setup
 
 ### Prerequisites
-- R (version 4.0 or higher recommended)
-- RStudio (for easier Shiny app development)
 
-### Required R Packages
+- R (version 4.0.0 or higher)
+- The following R packages:
+  - shiny
+  - remotes
+  - fullPage
+  - leaflet
+  - leaflet.extras
+  - dplyr
+  - caret
+  - hydroGOF
+  - e1071
+  - sns
+  - ggplot2
+  - ggfortify
+  - tidyverse
+  - ncdf4
+  - rbenchmark
+  - gtools
+
+### Installation
+
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/your-username/Great-Barrier-Reef_Data-Project.git
+   cd Great-Barrier-Reef_Data-Project
+   ```
+
+2. Install required packages:
+   ```R
+   install.packages(c("shiny", "leaflet", "leaflet.extras", "dplyr", "caret", 
+                    "hydroGOF", "e1071", "sns", "ggplot2", "ggfortify", 
+                    "tidyverse", "ncdf4", "rbenchmark", "gtools", "remotes"))
+   remotes::install_github("RinteRface/fullPage")
+   ```
+
+3. Download the required NetCDF data files by following the instructions in [Coral_data/README.md](Coral_data/README.md)
+
+### Running the Application
+
+1. Open R or RStudio
+2. Set your working directory to the project folder
+3. Run the app:
+   ```R
+   shiny::runApp()
+   ```
+
+Alternatively, use the app.R file:
 ```R
-# Install required packages
-install.packages(c(
-  "shiny",
-  "shinydashboard",
-  "ggplot2",
-  "dplyr",
-  "lubridate",
-  "tidyverse",
-  "viridis",
-  "DT",
-  "plotly",
-  "hrbrthemes",
-  "formattable"
-))
+Rscript -e "options(repos = c(CRAN = 'https://cloud.r-project.org/')); shiny::runApp()"
 ```
 
-### Running the App
-1. Clone this repository
-```bash
-git clone https://github.com/yourusername/Great-Barrier-Reef_Data-Project.git
-cd Great-Barrier-Reef_Data-Project
+## Project Structure
+
+```
+Great-Barrier-Reef_Data-Project/
+├── ui.R                   # User interface definition
+├── server.R               # Server logic
+├── app.R                  # Combined app file (optional)
+├── Coral_data/            # Directory for NetCDF files
+│   ├── README.md          # Instructions for data files
+│   └── *.nc               # NetCDF data files
+├── www/                   # Static assets (if any)
+└── README.md              # This file
 ```
 
-2. Launch the app in RStudio by opening the `app.R` file and clicking "Run App", or run:
-```R
-shiny::runApp()
-```
+## How to Use
 
-## Screenshots
-*[Add screenshots of your Shiny app here]*
+1. Navigate to the 'Risk Calculator' tab to access the interactive map
+2. Filter data by year or enable clustering for clearer visualization
+3. Click on any point on the map to load its environmental parameters
+4. Adjust parameters manually to explore different scenarios
+5. The calculated aragonite value is color-coded to indicate risk level:
+   - Green: Healthy aragonite levels (≥ 3)
+   - Orange: Moderate risk (1-3)
+   - Red: High risk (< 1)
+
+## Extending the Application
+
+To include more recent data:
+
+1. Download additional NetCDF files from the eReefs project
+2. Place them in the Coral_data directory
+3. Update the file paths in server.R to include the new files
+4. Update the year dropdown in ui.R to include new options
 
 ## Contributors
-- [Your Name] - Data Science & Marine Science collaboration
 
-## License
-This project is licensed under the MIT License - see the LICENSE file for details.
+- James Agamemnonos
+- Adda Ding
+- Jasmine Glencross
+- Kade Jansen-Daniel
+- Shreya Kothari
+- Shiyuan Li
+- Hangrui Shi
+- Simon Um
 
 ## Acknowledgements
-- Great Barrier Reef Marine Park Authority (GBRMPA)
-- Australian Maritime Safety Authority (AMSA)
-- Australian Institute of Marine Science (AIMS) for providing the dataset
+
+We would like to thank the Great Barrier Marine Park Authority for their support and guidance throughout this project. We also acknowledge the valuable data provided by the Australian Institute of Marine Science through the eReefs project.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

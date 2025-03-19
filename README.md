@@ -8,7 +8,7 @@ This interactive Shiny application predicts aragonite levels in the Great Barrie
 
 ## Live Demo
 
-View the live application: [Great Barrier Reef Aragonite Analysis](https://shreya-sk.shinyapps.io/Great-Barrier-Reef-Aragonite-Analysis/)
+View the live application: [Great Barrier Reef Aragonite Analysis]( https://shreya-sk.shinyapps.io/Great-Barrier-Reef-Aragonite/)
 
 ## Deployment Information
 
